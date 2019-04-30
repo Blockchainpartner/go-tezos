@@ -29,7 +29,7 @@ var (
 )
 
 // CreateBatchPayment forges batch payments and returns them ready to inject to a Tezos RPC. PaymentFee must be expressed in mutez.
-func (gt *GoTezos) CreateBatchPayment(payments []Payment, wallet Wallet, paymentFee int, gaslimit int) ([]string, error) {
+func (gt *GoTezos) CreateBatchPayment(payments []Payment, wallet Wallet, paymentFee int, gaslimit int, storageLimit int) ([]string, error) {
 
 	var operationSignatures []string
 
@@ -53,7 +53,7 @@ func (gt *GoTezos) CreateBatchPayment(payments []Payment, wallet Wallet, payment
 	for k := range batches {
 
 		// Convert (ie: forge) each 'Payment' into an actual Tezos transfer operation
-		operationBytes, operationContents, newCounter, err := gt.forgeOperationBytes(blockHead.Hash, counter, wallet, batches[k], paymentFee, gaslimit)
+		operationBytes, operationContents, newCounter, err := gt.forgeOperationBytes(blockHead.Hash, counter, wallet, batches[k], paymentFee, gaslimit, storageLimit)
 		if err != nil {
 			return operationSignatures, err
 		}
@@ -281,7 +281,7 @@ func (gt *GoTezos) generatePublicHash(publicKey []byte) (string, error) {
 	return gt.b58cencode(hash.Sum(nil), tz1), nil
 }
 
-func (gt *GoTezos) forgeOperationBytes(branchHash string, counter int, wallet Wallet, batch []Payment, paymentFee int, gaslimit int) (string, Conts, int, error) {
+func (gt *GoTezos) forgeOperationBytes(branchHash string, counter int, wallet Wallet, batch []Payment, paymentFee int, gaslimit int, storageLimit int) (string, Conts, int, error) {
 
 	var contents Conts
 	var combinedOps []TransOp
@@ -294,17 +294,18 @@ func (gt *GoTezos) forgeOperationBytes(branchHash string, counter int, wallet Wa
 
 	for k := range batch {
 
-		if batch[k].Amount > 0 {
+		if batch[k].Amount > 0 || len(batch[k].Parameters) > 0 {
 
 			operation := TransOp{
 				Kind:         "transaction",
 				Source:       wallet.Address,
 				Fee:          strconv.Itoa(paymentFee),
 				GasLimit:     strconv.Itoa(gaslimit),
-				StorageLimit: "0",
+				StorageLimit: strconv.Itoa(storageLimit),
 				Amount:       strconv.FormatFloat(roundPlus(batch[k].Amount, 0), 'f', -1, 64),
 				Destination:  batch[k].Address,
 				Counter:      strconv.Itoa(counter),
+				Parameters:   batch[k].Parameters,
 			}
 			combinedOps = append(combinedOps, operation)
 			counter++
