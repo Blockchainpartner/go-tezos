@@ -351,6 +351,26 @@ func (gt *GoTezos) GetBlockOperationHashes(blockHash string) (OperationHashes, e
 	return operations, nil
 }
 
+// GetBlockRawOperationHashes returns all the operation hashes at specific block hash as returned by RPC method
+func (gt *GoTezos) GetBlockRawOperationHashes(blockHash string) (RawOperationHashes, error) {
+
+	var operations RawOperationHashes
+
+	resp, err := gt.GetResponse("/chains/main/blocks/"+blockHash+"/operation_hashes", "{}")
+	if err != nil {
+		gt.logger.Println("Could not get block operation_hashes: " + err.Error())
+		return operations, err
+	}
+
+	operations, err = operations.UnmarshalJSON(resp.Bytes)
+	if err != nil {
+		gt.logger.Println("Could not decode operation hashes: " + err.Error())
+		return operations, err
+	}
+
+	return operations, nil
+}
+
 // GetAccountBalanceAtSnapshot gets the balance of a public key hash at a specific snapshot for a cycle.
 func (gt *GoTezos) GetAccountBalanceAtSnapshot(tezosAddr string, cycle int) (float64, error) {
 	snapShot, err := gt.GetSnapShot(cycle)
