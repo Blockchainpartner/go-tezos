@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"time"
 
 	"golang.org/x/crypto/blake2b"
 	"golang.org/x/crypto/nacl/secretbox"
@@ -29,7 +30,7 @@ var (
 )
 
 // CreateBatchPayment forges batch payments and returns them ready to inject to a Tezos RPC. PaymentFee must be expressed in mutez.
-func (gt *GoTezos) CreateBatchPayment(payments []Payment, wallet Wallet, paymentFee int, gaslimit int) ([]string, error) {
+func (gt *GoTezos) CreateBatchPayment(payments []Payment, wallet Wallet, paymentFee int, gaslimit int, storageLimit int) ([]string, error) {
 
 	var operationSignatures []string
 
@@ -53,7 +54,7 @@ func (gt *GoTezos) CreateBatchPayment(payments []Payment, wallet Wallet, payment
 	for k := range batches {
 
 		// Convert (ie: forge) each 'Payment' into an actual Tezos transfer operation
-		operationBytes, operationContents, newCounter, err := gt.forgeOperationBytes(blockHead.Hash, counter, wallet, batches[k], paymentFee, gaslimit)
+		operationBytes, operationContents, newCounter, err := gt.forgeOperationBytes(blockHead.Hash, counter, wallet, batches[k], paymentFee, gaslimit, storageLimit)
 		if err != nil {
 			return operationSignatures, err
 		}
@@ -281,7 +282,7 @@ func (gt *GoTezos) generatePublicHash(publicKey []byte) (string, error) {
 	return gt.b58cencode(hash.Sum(nil), tz1), nil
 }
 
-func (gt *GoTezos) forgeOperationBytes(branchHash string, counter int, wallet Wallet, batch []Payment, paymentFee int, gaslimit int) (string, Conts, int, error) {
+func (gt *GoTezos) forgeOperationBytes(branchHash string, counter int, wallet Wallet, batch []Payment, paymentFee int, gaslimit int, storageLimit int) (string, Conts, int, error) {
 
 	var contents Conts
 	var combinedOps []TransOp
@@ -294,17 +295,18 @@ func (gt *GoTezos) forgeOperationBytes(branchHash string, counter int, wallet Wa
 
 	for k := range batch {
 
-		if batch[k].Amount > 0 {
+		if batch[k].Amount > 0 || len(batch[k].Parameters) > 0 {
 
 			operation := TransOp{
 				Kind:         "transaction",
 				Source:       wallet.Address,
 				Fee:          strconv.Itoa(paymentFee),
 				GasLimit:     strconv.Itoa(gaslimit),
-				StorageLimit: "0",
+				StorageLimit: strconv.Itoa(storageLimit),
 				Amount:       strconv.FormatFloat(roundPlus(batch[k].Amount, 0), 'f', -1, 64),
 				Destination:  batch[k].Address,
 				Counter:      strconv.Itoa(counter),
+				Parameters:   batch[k].Parameters,
 			}
 			combinedOps = append(combinedOps, operation)
 			counter++
@@ -442,4 +444,87 @@ func roundPlus(f float64, places int) float64 {
 
 func round(f float64) float64 {
 	return math.Floor(f + .5)
+}
+
+func getRFC3339NowTimestamp() string {
+	return time.Now().UTC().Format(time.RFC3339)
+}
+
+// WatchOperationReceipt watches for maximum an hour every newly mined blocks and if it finds the wanted operation,
+// it writes its receipt on a dedicated channel
+func (gt *GoTezos) WatchOperationReceipt(watchedOpHash string, receiptChannel chan<- StructOperations) {
+	// init variables and constants
+	const predecessorsLength = 8           // number of predecessor blocks to query from known chain heads
+	var processedBlocks []string           // list of processed operation hashes
+	var minDate = getRFC3339NowTimestamp() // min_date parameter when querying chain heads
+	// loop every minute during maximum an hour (operations can be considered lost after this time)
+	for i := 0; i < 60; i++ {
+		// sleep a minute
+		time.Sleep(time.Minute)
+		// get block hashes for known heads since minDate
+		rpc := "/chains/main/blocks?min_date=" + minDate + "&length=" + strconv.Itoa(predecessorsLength)
+		resp, err := gt.GetResponse(rpc, "{}")
+		if err != nil {
+			gt.logger.Println("Could not get block hashes: " + err.Error())
+			continue
+		}
+		var blockHashes RawBlockHashes
+		blockHashes, err = blockHashes.UnmarshalJSON(resp.Bytes)
+		if err != nil {
+			gt.logger.Println("Could not unmarshal block hashes: " + err.Error())
+			continue
+		}
+		// if no heads are known since minDate, try again in a minute
+		if len(blockHashes) < 1 {
+			continue
+		}
+		// update minDate for next iteration
+		minDate = getRFC3339NowTimestamp()
+		// if more than one head fit the query, try again in a minute with an updated minDate value.
+		// for that reason, predecessorsLength should be strictly larger than 1.
+		if len(blockHashes) > 1 {
+			continue
+		}
+		// process each block
+	BlockLoop:
+		for _, blockHash := range blockHashes[0] {
+			// exclude already processed blocks
+			for _, processedBlock := range processedBlocks {
+				if blockHash == processedBlock {
+					continue BlockLoop
+				}
+			}
+			// get operation hashes for a given block
+			opHashesSlice, err := gt.GetBlockRawOperationHashes(blockHash)
+			if err != nil {
+				continue
+			}
+			// look for watched operation hash
+			for listOffset, opHashes := range opHashesSlice {
+				for operationOffset, opHash := range opHashes {
+					if opHash == watchedOpHash {
+						// fetch operation receipt
+						var op StructOperations
+						rpc := "/chains/main/blocks/" + blockHash + "/operations/" +
+							strconv.Itoa(listOffset) + "/" + strconv.Itoa(operationOffset)
+						resp, err := gt.GetResponse(rpc, "{}")
+						if err != nil {
+							gt.logger.Println("Could not get operation: " + err.Error())
+							return
+						}
+						op, err = op.UnmarshalJSON(resp.Bytes)
+						if err != nil {
+							gt.logger.Println("Could not decode operation: " + err.Error())
+							return
+						}
+						// write the receipt on the result channel and return
+						receiptChannel <- op
+						return
+					}
+				}
+			}
+			// update processedBlocks
+			processedBlocks = append(processedBlocks, blockHash)
+		}
+	}
 }

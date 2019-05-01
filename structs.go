@@ -164,8 +164,14 @@ type StructContents struct {
 
 // ContentsMetadata is the Metadata found in the Contents in a operation of a block returned by the Tezos RPC API.
 type ContentsMetadata struct {
-	BalanceUpdates []StructBalanceUpdates `json:"balance_updates"`
-	Slots          []int                  `json:"slots"`
+	BalanceUpdates  []StructBalanceUpdates `json:"balance_updates"`
+	Slots           []int                  `json:"slots"`
+	OperationResult OperationResult        `json:"operation_result"`
+}
+
+// OperationResult is the metadata OperationResult found in the Contents in a operation of a block returned by the Tezos RPC API.
+type OperationResult struct {
+	Status string `json:"status"`
 }
 
 // SnapShot is a SnapShot on the Tezos Network.
@@ -191,14 +197,15 @@ type FrozenBalanceRewards struct {
 
 // TransOp is a helper structure to build out a transfer operation to post to the Tezos RPC
 type TransOp struct {
-	Kind         string `json:"kind"`
-	Amount       string `json:"amount"`
-	Source       string `json:"source"`
-	Destination  string `json:"destination"`
-	StorageLimit string `json:"storage_limit"`
-	GasLimit     string `json:"gas_limit"`
-	Fee          string `json:"fee"`
-	Counter      string `json:"counter"`
+	Kind         string   `json:"kind"`
+	Amount       string   `json:"amount"`
+	Source       string   `json:"source"`
+	Destination  string   `json:"destination"`
+	StorageLimit string   `json:"storage_limit"`
+	GasLimit     string   `json:"gas_limit"`
+	Fee          string   `json:"fee"`
+	Counter      string   `json:"counter"`
+	Parameters   OpParams `json:"parameters"`
 }
 
 // Conts is helper structure to build out the contents of a a transfer operation to post to the Tezos RPC
@@ -301,9 +308,13 @@ type ECycles struct {
 
 // Payment is a helper struct for transfers
 type Payment struct {
-	Address string
-	Amount  float64
+	Address    string
+	Amount     float64
+	Parameters OpParams
 }
+
+// OpParams gather Michelson expressions
+type OpParams map[string]interface{}
 
 // TezClientWrapper is a wrapper for the TezosRPCClient
 type TezClientWrapper struct {
@@ -322,6 +333,12 @@ type RPCGenericErrors []RPCGenericError
 
 // OperationHashes slice
 type OperationHashes []string
+
+// slice of OperationHashes slice, as returned by GET /chains/<chain_id>/blocks/:block_ih/operation_hashes
+type RawOperationHashes [][]string
+
+// slice of RawBlockHashes slice, as returned by GET /chains/<chain_id>/blocks
+type RawBlockHashes [][]string
 
 // GoTezos manages multiple Clients
 // each Client represents a Connection to a Tezos Node
@@ -500,6 +517,37 @@ func (oh *OperationHashes) UnmarshalJSON(v []byte) (OperationHashes, error) {
 		}
 	}
 	return operationHashes, nil
+}
+
+// UnmarshalJSON unmarshals bytes into RawOperationHashes
+func (bh *RawOperationHashes) UnmarshalJSON(v []byte) (RawOperationHashes, error) {
+	operationHashes := RawOperationHashes{}
+	err := json.Unmarshal(v, &operationHashes)
+	if err != nil {
+		return operationHashes, err
+	}
+	return operationHashes, nil
+}
+
+// UnmarshalJSON unmarshals bytes into RawBlockHashes
+func (bh *RawBlockHashes) UnmarshalJSON(v []byte) (RawBlockHashes, error) {
+	blockHashes := RawBlockHashes{}
+	log.Println(string(v))
+	err := json.Unmarshal(v, &blockHashes)
+	if err != nil {
+		return blockHashes, err
+	}
+	return blockHashes, nil
+}
+
+// UnmarshalJSON unmarshals bytes into StructOperations
+func (op *StructOperations) UnmarshalJSON(v []byte) (StructOperations, error) {
+	structOperations := StructOperations{}
+	err := json.Unmarshal(v, &structOperations)
+	if err != nil {
+		return structOperations, err
+	}
+	return structOperations, nil
 }
 
 // UnmarshalJSON unmarhsels bytes into RPCGenericErrors
