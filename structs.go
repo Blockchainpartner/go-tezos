@@ -197,15 +197,15 @@ type FrozenBalanceRewards struct {
 
 // TransOp is a helper structure to build out a transfer operation to post to the Tezos RPC
 type TransOp struct {
-	Kind         string   `json:"kind"`
-	Amount       string   `json:"amount"`
-	Source       string   `json:"source"`
-	Destination  string   `json:"destination"`
-	StorageLimit string   `json:"storage_limit"`
-	GasLimit     string   `json:"gas_limit"`
-	Fee          string   `json:"fee"`
-	Counter      string   `json:"counter"`
-	Parameters   OpParams `json:"parameters"`
+	Kind         string        `json:"kind"`
+	Amount       string        `json:"amount"`
+	Source       string        `json:"source"`
+	Destination  string        `json:"destination"`
+	StorageLimit string        `json:"storage_limit"`
+	GasLimit     string        `json:"gas_limit"`
+	Fee          string        `json:"fee"`
+	Counter      string        `json:"counter"`
+	Parameters   MichelineExpr `json:"parameters"`
 }
 
 // Conts is helper structure to build out the contents of a a transfer operation to post to the Tezos RPC
@@ -310,11 +310,11 @@ type ECycles struct {
 type Payment struct {
 	Address    string
 	Amount     float64
-	Parameters OpParams
+	Parameters MichelineExpr
 }
 
-// OpParams gather Michelson expressions
-type OpParams map[string]interface{}
+// MichelineExpr gather Michelson expressions
+type MichelineExpr map[string]interface{}
 
 // TezClientWrapper is a wrapper for the TezosRPCClient
 type TezClientWrapper struct {
