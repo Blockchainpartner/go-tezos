@@ -532,7 +532,6 @@ func (bh *RawOperationHashes) UnmarshalJSON(v []byte) (RawOperationHashes, error
 // UnmarshalJSON unmarshals bytes into RawBlockHashes
 func (bh *RawBlockHashes) UnmarshalJSON(v []byte) (RawBlockHashes, error) {
 	blockHashes := RawBlockHashes{}
-	log.Println(string(v))
 	err := json.Unmarshal(v, &blockHashes)
 	if err != nil {
 		return blockHashes, err
