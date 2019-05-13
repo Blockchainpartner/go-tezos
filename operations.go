@@ -4,6 +4,7 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -452,7 +453,7 @@ func getRFC3339NowTimestamp() string {
 
 // WatchOperationReceipt watches for maximum an hour every newly mined blocks and if it finds the wanted operation,
 // it writes its receipt on a dedicated channel
-func (gt *GoTezos) WatchOperationReceipt(watchedOpHash string, receiptChannel chan<- StructOperations) {
+func (gt *GoTezos) WatchOperationReceipt(watchedOpHash string, receiptChannel chan<- StructOperations, logChannel chan<- error) {
 	// init variables and constants
 	const predecessorsLength = 8           // number of predecessor blocks to query from known chain heads
 	var processedBlocks []string           // list of processed operation hashes
@@ -465,13 +466,13 @@ func (gt *GoTezos) WatchOperationReceipt(watchedOpHash string, receiptChannel ch
 		rpc := "/chains/main/blocks?min_date=" + minDate + "&length=" + strconv.Itoa(predecessorsLength)
 		resp, err := gt.GetResponse(rpc, "{}")
 		if err != nil {
-			gt.logger.Println("Could not get block hashes: " + err.Error())
+			logChannel <- errors.New("Could not get block hashes: " + err.Error())
 			continue
 		}
 		var blockHashes RawBlockHashes
 		blockHashes, err = blockHashes.UnmarshalJSON(resp.Bytes)
 		if err != nil {
-			gt.logger.Println("Could not unmarshal block hashes: " + err.Error())
+			logChannel <- errors.New("Could not unmarshal block hashes: " + err.Error())
 			continue
 		}
 		// if no heads are known since minDate, try again in a minute
@@ -509,12 +510,12 @@ func (gt *GoTezos) WatchOperationReceipt(watchedOpHash string, receiptChannel ch
 							strconv.Itoa(listOffset) + "/" + strconv.Itoa(operationOffset)
 						resp, err := gt.GetResponse(rpc, "{}")
 						if err != nil {
-							gt.logger.Println("Could not get operation: " + err.Error())
+							logChannel <- errors.New("Could not get operation: " + err.Error())
 							return
 						}
 						op, err = op.UnmarshalJSON(resp.Bytes)
 						if err != nil {
-							gt.logger.Println("Could not decode operation: " + err.Error())
+							logChannel <- errors.New("Could not decode operation: " + err.Error())
 							return
 						}
 						// write the receipt on the result channel and return
